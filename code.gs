@@ -1,6 +1,54 @@
-version 13
-
 var SCOPES = ['https://www.googleapis.com/auth/gmail.modify','https://www.google.com/m8/feeds'];
+
+// function onOpen(e) {
+//   var ui = SpreadsheetApp.getUi().createAddonMenu()
+//       .addItem('Mail Merge', 'showSidebar')
+//       .addToUi();
+// }
+function onOpen(e) {
+  var ui = SpreadsheetApp.getUi().createMenu('Mail Merge')
+      .addItem('Mail Merge', 'showSidebar')
+      .addToUi();
+      
+}
+
+function showSidebar() {
+  var html = HtmlService.createHtmlOutputFromFile('Sidebar')
+      .setTitle('Mail Merge');
+  SpreadsheetApp.getUi().showSidebar(html);
+}
+
+function onInstall(e) {
+  resetAuthorization(); // Reset authorization properties
+  onOpen(e);
+}
+
+function authorizeAndShowSidebar() {
+  var service = getOAuthService();
+
+  // Check if the user has already authorized
+  var userProperties = PropertiesService.getUserProperties();
+  var hasAuthorized = userProperties.getProperty('hasAuthorized');
+
+  if (service.hasAccess() || hasAuthorized === 'true') {
+    // If already authorized, return the access token
+    return service.getAccessToken();
+  } else {
+    // If not authorized, display the authorization link
+    var authorizationUrl = service.getAuthorizationUrl();
+    var html = '<a href="' + authorizationUrl + '" target="_blank">Authorize</a>. ' +
+               'Reopen the sidebar when the authorization is complete.';
+
+    var page = HtmlService.createHtmlOutput(html);
+
+    // Show the sidebar with the authorization link
+    SpreadsheetApp.getUi().showSidebar(page);
+
+    // Return null to indicate that authorization is not yet complete
+    //return null;
+  }
+}
+
 
 
 
@@ -9,69 +57,24 @@ var SCOPES = ['https://www.googleapis.com/auth/gmail.modify','https://www.google
 //   'Reopen the sidebar when the authorization is complete.'
 // );
 
-// function authorize() {
-//   var AUTH_TEMPLATE = HtmlService.createTemplate(
-//     '<a href="<?= authorizationUrl ?>" target="_blank">Authorize</a>. ' +
-//     'Reopen the sidebar when the authorization is complete.'
-//   );
-
-//   var service = getOAuthService();
-//   if (service.hasAccess()) {
-//     return service.getAccessToken();
-//   } else {
-//     AUTH_TEMPLATE.authorizationUrl = service.getAuthorizationUrl();
-//     Logger.log(service.getAuthorizationUrl());
-//     var page = AUTH_TEMPLATE.evaluate();
-//     SpreadsheetApp.getUi().showSidebar(page);
-//   }
-// }
-
-
-
-// function authorizeUser() {
-//   var authorizationUrl = getAuthorizationUrl();
-//   var htmlOutput = HtmlService.createHtmlOutput('<a href="' + authorizationUrl + '" target="_blank">Authorize</a>. Reopen the sidebar when the authorization is complete.');
-//   SpreadsheetApp.getUi().showModalDialog(htmlOutput, 'Authorization');
-// }
-
-
- function authorize() {
+function authorize() {
   var service = getOAuthService();
-  var currentUserEmail = Session.getActiveUser().getEmail();
-  // Ensure that the service has access and the access token is not empty
-  // Check if the stored user email matches the current user
-  if (service.hasAccess() ) {
+  if (service.hasAccess()) {
     return service.getAccessToken();
-  }  else {
-    var authorizationUrl = getAuthorizationUrl();
-    var htmlOutput = HtmlService.createHtmlOutput('<a href="' + authorizationUrl + '" target="_blank">Authorize</a>. Reopnnnnnnnnnnnnnn the sidebar when the authorization is complete.');
-    SpreadsheetApp.getUi().showSidebar(htmlOutput);
-  //  return null; // Return null to indicate that authorization is still required
+  } else {
+    AUTH_TEMPLATE.authorizationUrl = service.getAuthorizationUrl();
+    Logger.log(service.getAuthorizationUrl())
+    var page = AUTH_TEMPLATE.evaluate();
+    SpreadsheetApp.getUi().showSidebar(page);
   }
 }
 
 
-
-
-function getAuthorizationUrl() {
-  var service = getOAuthService();
-  return service.getAuthorizationUrl();
-}
-
-
-
-
 function getOAuthService() {
   var scriptProps = PropertiesService.getScriptProperties();
-   
-  var currentUserEmail = Session.getActiveUser().getEmail();
-  
   var clientId = '323888304851-h5rq2e64qfstafem88djtkf8coqe1pvu.apps.googleusercontent.com';
   var clientSecret = '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';
-
-  //scriptProps.setProperty('userEmail', currentUserEmail); 
-  
-  var service = OAuth2.createService('Gmail' + currentUserEmail)
+  var service = OAuth2.createService('Gmail')
       .setAuthorizationBaseUrl('https://accounts.google.com/o/oauth2/auth')
       .setTokenUrl('https://accounts.google.com/o/oauth2/token')
       .setClientId(clientId)
@@ -87,8 +90,7 @@ function getOAuthService() {
       .setParam('response_type', 'code')
       .setParam('authMode', 'LIMITED') // Add this line to set the authMode parameter to LIMITED
       .setParam('hl', 'en');
-      
-  //scriptProps.setProperty('userEmail', currentUserEmail);
+
 
   return service;
 }
@@ -98,38 +100,25 @@ function getOAuthService() {
 function authCallback(request) {
   var service = getOAuthService();
   var authorized = service.handleCallback(request);
+
   if (authorized) {
-    Logger.log('Authorization successful. Access token: ' + service.getAccessToken());
+    // Set the flag to indicate that authorization is complete
+    PropertiesService.getUserProperties().setProperty('hasAuthorized', 'true');
+
     return HtmlService.createHtmlOutput('Authorization successful. You can close this tab and return to the Mail Merge sidebar.');
   } else {
-    Logger.log('Authorization failed. Error: ' + service.getLastError());
     return HtmlService.createHtmlOutput('Authorization failed. Please try again.');
   }
 }
 
 
-function displayAuthorizationLink() {
-  console.log('Displaying authorization link...');
-  var authorizationUrl = getAuthorizationUrl();
-  console.log('Authorization URL:', authorizationUrl);
-  var htmlOutput = HtmlService.createHtmlOutput('<a href="' + authorizationUrl + '" target="_blank">Authorize</a>. Reopen the sidebar when the authorization is complete.');
-  SpreadsheetApp.getUi().showSidebar(htmlOutput);
-}
-
 
 function sendEmailFromDraftWithProgress(draftId, statusColumn) {
   // Authorize and get the access token
-  var accessToken = authorize();
-  Logger.log(accessToken)
+  var accessToken = authorizeAndShowSidebar();
   if (!accessToken) {
-    var authorizationUrl = getAuthorizationUrl();
-    var htmlOutput = HtmlService.createHtmlOutput('<a href="' + authorizationUrl + '" target="_blank">Authorize</a>. Reopnnnnnnnnnnnnnn the sidebar when the authorization is complete.');
-    SpreadsheetApp.getUi().showSidebar(htmlOutput);
     // Authorization failed, return immediately
-    throw new Error('Authorization required. Please authorize before sending emails.');
-
- 
-   // return;
+    return;
   }
 
   var draft = GmailApp.getDrafts().find(function(draft) {
@@ -147,7 +136,6 @@ function sendEmailFromDraftWithProgress(draftId, statusColumn) {
     var bcc = message.getBcc();
     var subject = message.getSubject();
     var body = message.getBody();
-    
     
     for (var i = 0; i < selectedValues.length; i++) {
       var recipientEmail = selectedValues[i][0];
@@ -183,29 +171,16 @@ function sendEmailFromDraftWithProgress(draftId, statusColumn) {
         sheet.getRange(row, statusColumn).setValue("Sent");
         sheet.getRange(row, statusColumn).setBackground('green');
       } catch (error) {
-    // Log any errors that occur while sending the email
-    var row = selectedRange.getRowIndex() + i;
-    var column = selectedRange.getLastColumn() + 1;
+        // Log any errors that occur while sending the email
+        // Update the spreadsheet with "Sent" status
+        var row = selectedRange.getRowIndex() + i;
+        sheet.getRange(row, statusColumn).setValue("Failed: " + error.message);
+        sheet.getRange(row, statusColumn).setBackground('red');
+        Logger.log('Failed to send email to ' + recipientEmail + ': ' + error.message);
+      }
+    }
 
-    if (error.message.indexOf('401') !== -1) {
-      // Handle 401 Unauthorized error
-      var authorizationUrl = getAuthorizationUrl();
-      var htmlOutput = HtmlService.createHtmlOutput('<a href="' + authorizationUrl + '" target="_blank">Authorize</a>. Reopen the sidebar when the authorization is complete.');
-      SpreadsheetApp.getUi().showSidebar(htmlOutput);
-
-      sheet.getRange(row, statusColumn).setValue("Authorization required");
-      sheet.getRange(row, statusColumn).setBackground('yellow');
-      Logger.log('Authorization required. Please authorize before sending emails.');
-    } else {
-      // Handle other errors
-      sheet.getRange(row, statusColumn).setValue("Failed: " + error.message);
-      sheet.getRange(row, statusColumn).setBackground('red');
-      Logger.log('Failed to send email to ' + recipientEmail + ': ' + error.message);
-    }
-    }
-    }
   }
-
 }
 
 function getRecipientName(recipientEmail) {
@@ -244,11 +219,16 @@ function getRecipientName(recipientEmail) {
 }
 
 
-
 function resetAuthorization() {
+  PropertiesService.getUserProperties().deleteProperty('hasAuthorized');
   var service = getOAuthService();
   service.reset();
 }
+
+// function resetAuthorization() {
+//   var service = getOAuthService();
+//   service.reset();
+// }
 
 
 function getDrafts() {
@@ -265,47 +245,5 @@ function getDrafts() {
 }
 
 
-// function onOpen(e) {
-//   var ui = SpreadsheetApp.getUi().createMenu('Mail Merge')
-//       .addItem('Mail Merge', 'showSidebar')
-//       .addToUi();
-    
-// }
 
-function onOpen(e) {
-  var ui = SpreadsheetApp.getUi().createMenu('Mail Merge')
-    .addItem('Mail Merge', 'showSidebar')
-    // .addItem('Authorize', 'authorizeUser')
-    .addToUi();
-}
-
-
-
-
-// function showSidebar() {
-//   authorize();  // Call authorize to display the authorization link
-//   var html = HtmlService.createHtmlOutputFromFile('Sidebar').setTitle('Mail Merge');
-//   SpreadsheetApp.getUi().showSidebar(html);
-// }
-
-
-function showSidebar() {
-  var accessToken = authorize();
-
-  if (accessToken) {
-    // User is already authorized, proceed with your existing sidebar content
-    var html = HtmlService.createHtmlOutputFromFile('Sidebar').setTitle('Mail Merge');
-    SpreadsheetApp.getUi().showSidebar(html);
-  } else {
-    // User needs to authorize, show the authorization link
-    var authorizationUrl = getAuthorizationUrl();
-    var htmlOutput = HtmlService.createHtmlOutput('<a href="' + authorizationUrl + '" target="_blank">Authorize</a>. Authorization is required for this add-on.').setHeight(200).setWidth(300);
-    SpreadsheetApp.getUi().showSidebar(htmlOutput);
-  }
-}
-
-function onInstall(e) {
-  resetAuthorization()
-  onOpen(e);
-}
 
